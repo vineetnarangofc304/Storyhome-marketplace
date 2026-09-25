@@ -1,0 +1,32 @@
+{
+  "summary": "Comprehensive backend+frontend testing of the 3 NEW modules (Seller Support, Weight Discrepancies, Return Orders) plus auth/branding/marketplaces/masters. 21/21 backend pytest cases pass. Full UI end-to-end flow passes: ticket create/reply(agent->awaiting_seller, seller->responded)/resolve; weight create/edit/status change/save; raise-ticket sets status=disputed and disables button; return create with problem status auto-creates SAH-* ticket; patching normal return to qc_failed auto-creates ticket; scan sales works; issues-only filter works; MarketplaceSelector shows Myntra active + Amazon/Flipkart/... as (soon). Cross-module tickets appear in Seller Support with correct category filters (weight, return). Branding fully rebranded (Story At Home / SAH monogram / Powered by fundle, no Latin Quarter anywhere). All 17 sidebar pages render without crash on clean-seeded empty data.",
+  "backend_issues": { "critical": [], "minor": [] },
+  "frontend_issues": {
+    "ui_bugs": [],
+    "integration_issues": [],
+    "design_issues": []
+  },
+  "test_report_links": [
+    "/app/backend/tests/test_sah_new_modules.py",
+    "/app/test_reports/pytest/sah_new_modules.xml"
+  ],
+  "action_items": [],
+  "critical_code_review_comments": [
+    "seller_support.create_ticket inserts using `dict(ticket)` (fine) but returns _clean(ticket) — good practice, kept.",
+    "returns._auto_ticket mutates doc via update_one but the in-memory `doc` in create_return already has stale ticket_id=None before merge — resolved by explicit reassignment after _auto_ticket. Consistent.",
+    "weight.raise_ticket rejects when a ticket already linked (400) — matches UI (button disabled). Good.",
+    "No auth guard (Depends(require_admin)) on POST /support/tickets, POST /weight/discrepancies, POST /returns, POST /support/tickets/{id}/messages, POST /weight/.../raise-ticket, POST /returns/{id}/create-ticket, PATCH endpoints. Only DELETE endpoints and /returns/scan enforce admin. If viewer role should be read-only, add require_admin to mutating routes. (Not blocking — request did not specify RBAC for new modules.)",
+    "returns.scan uses fields nsv_val/report_month from sales collection. On clean seed the sales collection is empty so it returns {created:0, skipped:0} — verified. If sales schema evolves these fields should be validated.",
+    "Frontend WeightRow / ReturnRow store local editable state derived from props at mount only; after global load() refresh the derived variance columns update from server-echoed row, but the local `cw/ew/status` in WeightRow may go stale if the row is re-rendered from a new list without remount. Consider keying on `${w.id}-${w.updated_at}` for perfect sync (minor)."
+  ],
+  "updated_files": [
+    "/app/backend/tests/test_sah_new_modules.py (new file)"
+  ],
+  "success_rate": { "backend": "100% (21/21)", "frontend": "100% (all critical flows)" },
+  "test_credentials": "admin@fundle.ai / admin123 (seeded, from /app/memory/test_credentials.md)",
+  "seed_data_creation": "Tests created TEST_-prefixed tickets, weight discrepancies (UI-WT-*, TEST-SKU-1), and return orders (TEST-RET-1/2) via API + UI. No teardown fixtures — these persist in MongoDB for further testing; they follow TEST_/UI-* naming so they are easy to purge later.",
+  "retest_needed": false,
+  "should_main_agent_self_test": false,
+  "context_for_next_testing_agent": "Backend regression suite at /app/backend/tests/test_sah_new_modules.py covers all new-module endpoints + cross-module ticket linkage. Run non-parallel (`pytest -p no:xdist -o addopts=\"\"`) to avoid ordering issues in the cross-module assertion (Weight ticket must be raised before it's queried under support?category=weight). DB is now polluted with a few TEST_/UI-* rows in support_tickets, weight_discrepancies, return_orders — behaves like normal data and won't break other tests.",
+  "rca of the issue": "No blocking issues found. Only one internal test-suite quirk: with pytest-xdist LoadScope split, TestReturns.test_cross_module_ticket_visible could run on a different worker before TestWeight.test_raise_ticket completes, causing spurious 0-vs-1 count. Ran with -p no:xdist -> all 21 pass. Not an app bug."
+}
